@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
  *   <li>The header has 18 columns but every data row has 19 (trailing {@code ;}).</li>
  *   <li>Decimal comma: {@code -18,99}.</li>
  *   <li>Dates are {@code dd/MM/yyyy}; booking date and value date can differ.</li>
- *   <li>{@code Amount} is signed and {@code Credit}/{@code Debit} repeat it: both must agree.</li>
+ *   <li>{@code Amount} is signed and {@code Credit}/{@code Debit} repeat it (Debit signed too): both must agree.</li>
  *   <li>{@code Balance} after every row, oldest first: previous balance + amount must equal balance.</li>
  *   <li>No unique ID, and {@code Statement number} is shared by several rows.</li>
  *   <li>Encoding unconfirmed: UTF-8 is tried first, Windows-1252 is the fallback.</li>
@@ -44,9 +44,11 @@ import java.util.regex.Pattern;
 @Component
 public class KbcCsvParser implements BankParser {
 
-    // Header names, compared case-insensitively. Columns are found by name, not position,
-    // so a re-ordered export still works and a renamed column fails loudly.
-    static final String COL_ACCOUNT = "account number";
+    // Header names as in a real KBC export, compared case-insensitively. Note "Accountnumber" is
+    // one word but "Counterparty account number" is not; that is how KBC writes them.
+    // Columns are found by name, not position, so a re-ordered export still works and a renamed
+    // column fails loudly. Heading, Name, Counterparty BIC/address and the two references are not read.
+    static final String COL_ACCOUNT = "accountnumber";
     static final String COL_CURRENCY = "currency";
     static final String COL_STATEMENT = "statement number";
     static final String COL_DATE = "date";
@@ -56,8 +58,8 @@ public class KbcCsvParser implements BankParser {
     static final String COL_BALANCE = "balance";
     static final String COL_CREDIT = "credit";
     static final String COL_DEBIT = "debit";
-    static final String COL_COUNTERPARTY_ACCOUNT = "counterparty's account number";
-    static final String COL_COUNTERPARTY_NAME = "counterparty's name";
+    static final String COL_COUNTERPARTY_ACCOUNT = "counterparty account number";
+    static final String COL_COUNTERPARTY_NAME = "counterparty name";
 
     private static final List<String> REQUIRED_COLUMNS = List.of(
             COL_ACCOUNT, COL_CURRENCY, COL_STATEMENT, COL_DATE, COL_DESCRIPTION, COL_VALUE_DATE,
@@ -263,15 +265,16 @@ public class KbcCsvParser implements BankParser {
     }
 
     /**
-     * Trap 5: Credit/Debit repeat the amount. Money in: Credit equals it and Debit is empty.
-     * Money out: Debit equals it (KBC may or may not sign it, so compare the absolute value)
-     * and Credit is empty. A mismatch means we are reading the wrong column or a corrupt file.
+     * Trap 5: Credit/Debit repeat the amount, with the same sign. Money in: Credit equals Amount
+     * (positive) and Debit is empty. Money out: Debit equals Amount (negative, e.g. -18,99) and
+     * Credit is empty. A mismatch, including an unsigned Debit, means we are reading the wrong
+     * column or a corrupt file.
      */
     private static void checkCreditDebit(BigDecimal amount, String creditRaw, String debitRaw, int lineNo) {
-        BigDecimal credit = creditRaw == null ? BigDecimal.ZERO : parseAmount(creditRaw, COL_CREDIT, lineNo).abs();
-        BigDecimal debit = debitRaw == null ? BigDecimal.ZERO : parseAmount(debitRaw, COL_DEBIT, lineNo).abs();
+        BigDecimal credit = creditRaw == null ? BigDecimal.ZERO : parseAmount(creditRaw, COL_CREDIT, lineNo);
+        BigDecimal debit = debitRaw == null ? BigDecimal.ZERO : parseAmount(debitRaw, COL_DEBIT, lineNo);
         BigDecimal expectedCredit = amount.signum() > 0 ? amount : BigDecimal.ZERO;
-        BigDecimal expectedDebit = amount.signum() < 0 ? amount.abs() : BigDecimal.ZERO;
+        BigDecimal expectedDebit = amount.signum() < 0 ? amount : BigDecimal.ZERO;
         if (credit.compareTo(expectedCredit) != 0 || debit.compareTo(expectedDebit) != 0) {
             throw new BankFileFormatException(lineNo, "Credit/Debit columns do not match Amount");
         }

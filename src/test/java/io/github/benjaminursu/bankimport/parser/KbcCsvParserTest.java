@@ -20,11 +20,55 @@ class KbcCsvParserTest {
 
     private static final Path FIXTURES = Path.of("fixtures", "kbc");
 
-    private static final String HEADER = "Account number;Heading;Name;Currency;Statement number;Date;Description;"
-            + "Value date;Amount;Balance;Credit;Debit;Counterparty's account number;BIC counterparty;"
-            + "Counterparty's name;Counterparty's address;Structured reference;Free-format reference";
+    /** The header of a real KBC export, copied exactly (column names only, no data). */
+    private static final String HEADER = "Accountnumber;Heading;Name;Currency;Statement number;Date;Description;"
+            + "Value date;Amount;Balance;Credit;Debit;Counterparty account number;Counterparty BIC;"
+            + "Counterparty name;Counterparty address;Standard-format reference;Free-format reference";
 
     private final KbcCsvParser parser = new KbcCsvParser();
+
+    // ---------- the real header ----------
+
+    @Test
+    void acceptsTheRealKbcHeader() throws IOException {
+        String file = HEADER + "\r" + row("02/01/2026", "-1,00", "99,00", "", "-1,00") + "\r";
+
+        Transaction parsed = parse(file).transactions().getFirst();
+
+        assertThat(parsed.amount()).isEqualTo(Money.of("-1.00", "EUR"));
+        assertThat(parsed.description()).isEqualTo("SECRET SHOP");
+    }
+
+    @Test
+    void allKbcFixturesStartWithTheRealHeader() throws IOException {
+        // If a fixture drifts from the real format, the fixture tests stop meaning anything.
+        try (var files = Files.list(FIXTURES)) {
+            for (Path fixture : files.toList()) {
+                String content = new String(Files.readAllBytes(fixture), StandardCharsets.ISO_8859_1);
+                assertThat(content).as(fixture.toString()).startsWith(HEADER + "\r");
+            }
+        }
+    }
+
+    @Test
+    void allKbcFixturesEndEveryLineWithCr() throws IOException {
+        try (var files = Files.list(FIXTURES)) {
+            for (Path fixture : files.toList()) {
+                byte[] bytes = Files.readAllBytes(fixture);
+                assertThat(bytes[bytes.length - 1]).as(fixture.toString()).isEqualTo((byte) '\r');
+            }
+        }
+    }
+
+    @Test
+    void refusesTheOldGuessedHeaderNames() {
+        String guessed = HEADER.replace("Accountnumber", "Account number")
+                .replace("Counterparty name", "Counterparty's name");
+
+        assertThatThrownBy(() -> parse(guessed + "\r" + row("02/01/2026", "-1,00", "99,00", "", "-1,00")))
+                .isInstanceOf(BankFileFormatException.class)
+                .hasMessage("line 1: not a KBC export, missing columns [accountnumber, counterparty name]");
+    }
 
     // ---------- the fixtures ----------
 
@@ -121,8 +165,9 @@ class KbcCsvParserTest {
 
     @Test
     void acceptsFileWithoutTrailingLineBreak() throws IOException {
-        // kbc-accents-utf8.csv has no CR after its last row; kbc-basic.csv has one.
-        assertThat(parseFixture("kbc-accents-utf8.csv").transactions()).hasSize(2);
+        // Real exports end with a CR, but a file saved by another tool might not.
+        String file = HEADER + "\r" + row("02/01/2026", "-1,00", "99,00", "", "-1,00");
+        assertThat(parse(file).transactions()).hasSize(1);
     }
 
     // ---------- other line endings and small variations ----------
@@ -156,14 +201,17 @@ class KbcCsvParserTest {
     }
 
     @Test
-    void acceptsUnsignedDebitColumn() throws IOException {
+    void refusesUnsignedDebit() {
+        // KBC signs Debit (-18,99). An unsigned value means we are reading some other column.
         String file = HEADER + "\r" + row("02/01/2026", "-1,00", "99,00", "", "1,00");
-        assertThat(parse(file).transactions()).hasSize(1);
+        assertThatThrownBy(() -> parse(file))
+                .isInstanceOf(BankFileFormatException.class)
+                .hasMessageContaining("Credit/Debit");
     }
 
     @Test
     void keepsSemicolonInsideQuotedField() throws IOException {
-        String file = HEADER + "\r" + "BE00123400000001;Current account;J. DOE;EUR;00001;02/01/2026;"
+        String file = HEADER + "\r" + "BE00123400000001;;J. DOE;EUR;00001;02/01/2026;"
                 + "\"FAKE SHOP; AISLE \"\"3\"\"\";02/01/2026;-1,00;99,00;;-1,00;;;;;;;";
         assertThat(parse(file).transactions().getFirst().description()).isEqualTo("FAKE SHOP; AISLE \"3\"");
     }
@@ -272,9 +320,9 @@ class KbcCsvParserTest {
 
     // ---------- helpers ----------
 
-    /** One data row with a trailing ';' (19 fields), like a real KBC export. */
+    /** One data row with a trailing ';' (19 fields) and empty Heading and address, like a real KBC export. */
     private static String row(String date, String amount, String balance, String credit, String debit) {
-        return "BE00123400000001;Current account;J. DOE;EUR;00001;" + date + ";SECRET SHOP;" + date + ";"
+        return "BE00123400000001;;J. DOE;EUR;00001;" + date + ";SECRET SHOP;" + date + ";"
                 + amount + ";" + balance + ";" + credit + ";" + debit + ";;;;;;;";
     }
 
