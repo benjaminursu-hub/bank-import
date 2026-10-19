@@ -30,7 +30,7 @@ import java.util.Set;
  * both already stored, both skipped. If it contains three, the third is (hash, 3) and is new.
  * <p>
  * Assumption: an export contains every transaction of each day it covers, in the bank's order.
- * Exports are by date range, so they do. See REVIEW.md for the one case where this would break.
+ * Exports are by date range, so they do. See docs/decisions.md for the one case where this would break.
  * <p>
  * Pure logic, no database: the caller loads the keys already stored for the account.
  */
