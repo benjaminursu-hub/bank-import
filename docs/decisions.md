@@ -114,6 +114,22 @@ file B:  coffee 06/01 -3,50   → (h, 1)   already stored → skip
   bank's order. If an export could contain the 2nd coffee of a day but not the 1st, that 2nd coffee
   would be counted as occurrence 1 and wrongly skipped. Date-range exports can't do that (open question 4).
 
+## Real-data check (local only)
+`realdata/KbcRealDataTest` parses every `.csv` in `%BANK_SAMPLES_DIR%\kbc` (outside the repo) and
+prints only counts, dates and pass/fail. Two independent guards keep it out of normal builds and CI:
+the `realdata` tag is excluded by default (`<excludedTags>` property in `pom.xml`), and the test is
+skipped unless `BANK_SAMPLES_DIR` is set. It prints "file 1 of N", never file names (an export's
+name can contain the account number), and for unexpected exceptions only the class name.
+
+```
+$env:BANK_SAMPLES_DIR = "D:\bank-samples"
+.\mvnw.cmd test "-Dgroups=realdata" "-DexcludedTags="
+```
+
+The exclusion is a property, not a fixed `<excludedGroups>`, because a fixed value in the pom
+would silently override `-DexcludedGroups=docker` on the command line, and the Windows CI job
+would run the Docker tests again. CI now passes `-DexcludedTags=realdata,docker`.
+
 ## What to study to own this code
 1. **Flyway:** versioned migrations, why you never edit an applied migration (checksums).
 2. **PostgreSQL constraints:** `CHECK`, `UNIQUE`, composite foreign keys, `ON DELETE` options,

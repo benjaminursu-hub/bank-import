@@ -30,6 +30,7 @@ jobs:
 
       # Windows runners only support Windows containers, so the postgres image cannot start.
       # Tests tagged "docker" are skipped here; everything else (parsers, duplicates) still runs.
+      # "realdata" stays excluded too (it is excluded by default in pom.xml; this list replaces that default).
       - name: Build and test (without Docker tests)
         if: runner.os == 'Windows'
-        run: ./mvnw.cmd -B verify "-DexcludedGroups=docker"
+        run: ./mvnw.cmd -B verify "-DexcludedTags=realdata,docker"
