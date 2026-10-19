@@ -28,6 +28,9 @@
     </scm>
     <properties>
         <java.version>21</java.version>
+        <!-- JUnit tags skipped by `mvnw test`. "realdata" reads real bank exports and only runs on
+             request (see KbcRealDataTest). Override on the command line: -DexcludedTags=realdata,docker -->
+        <excludedTags>realdata</excludedTags>
     </properties>
     <dependencies>
         <dependency>
@@ -104,6 +107,13 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${excludedTags}</excludedGroups>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -1,2 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+
+# Bank fixtures must stay byte-for-byte identical (CR-only line endings, Windows-1252).
+# -text: git never converts their line endings or treats them as text to normalise.
+fixtures/** -text
